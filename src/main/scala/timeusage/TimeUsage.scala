@@ -62,15 +62,17 @@ object TimeUsage {
     *         have type Double. None of the fields are nullable.
     * @param columnNames Column names of the DataFrame
     */
-  def dfSchema(columnNames: List[String]): StructType =
-    ???
+  def dfSchema(columnNames: List[String]): StructType = {
+    val respondentIdType = StructField(columnNames.head, StringType, nullable = false)
+    val numericTypes = columnNames.tail.map(columnName => StructField(columnName, DoubleType, nullable = false))
+    StructType(respondentIdType::numericTypes)
+  }
 
 
   /** @return An RDD Row compatible with the schema produced by `dfSchema`
     * @param line Raw fields
     */
-  def row(line: List[String]): Row =
-    ???
+  def row(line: List[String]): Row = Row.fromSeq(line.head :: line.tail.map(_.toDouble))
 
   /** @return The initial data frame columns partitioned in three groups: primary needs (sleeping, eating, etc.),
     *         work and other (leisure activities)
@@ -88,7 +90,32 @@ object TimeUsage {
     *    “t10”, “t12”, “t13”, “t14”, “t15”, “t16” and “t18” (those which are not part of the previous groups only).
     */
   def classifiedColumns(columnNames: List[String]): (List[Column], List[Column], List[Column]) = {
-    ???
+    val primaryPrefixes = List("t01", "t03", "t11", "t1801", "t1803")
+    val workingPrefixes = List("t05", "t1805")
+    val otherPrefixes = List("t02", "t04", "t06", "t07", "t08", "t09", "t10", "t12", "t13", "t14", "t15", "t16", "t18")
+
+    def startsWithPrefix(prefixes: List[String])(name: String) = prefixes.exists(name.startsWith)
+
+    val isPrimary = startsWithPrefix(primaryPrefixes)(_)
+    val isWork = startsWithPrefix(workingPrefixes)(_)
+    val isOther = startsWithPrefix(otherPrefixes)(_)
+
+    val classify: String => (Int, String) = name => {
+      if (isPrimary(name)) (0, name)
+      else if (isWork(name)) (1, name)
+      else if (isOther(name)) (2, name)
+      else (3, name)
+    }
+
+    def getColumn(pair: (Int, String)): Column = new Column(pair._2)
+
+    val columnMap: Map[Int, List[Column]] = columnNames
+      .map(classify)
+      .filter(p => p._1 < 3)
+      .groupBy(p => p._1)
+      .mapValues(list => list.map(getColumn))
+
+    (columnMap(0), columnMap(1), columnMap(2))
   }
 
   /** @return a projection of the initial DataFrame such that all columns containing hours spent on primary needs
