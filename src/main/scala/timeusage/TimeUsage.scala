@@ -3,6 +3,7 @@ package timeusage
 import java.nio.file.Paths
 
 import org.apache.spark.sql._
+import org.apache.spark.sql.expressions.scalalang.typed
 import org.apache.spark.sql.types._
 
 /** Main class */
@@ -195,7 +196,14 @@ object TimeUsage {
     *               Finally, the resulting DataFrame should be sorted by working status, sex and age.
     */
   def timeUsageGrouped(summed: DataFrame): DataFrame = {
-    ???
+    summed
+      .groupBy($"working", $"sex", $"age")
+      .agg(
+        round(avg($"primaryNeeds"), 1).as("primaryNeeds"),
+        round(avg($"work"), 1).as("work"),
+        round(avg($"other"), 1).as("other")
+      )
+      .orderBy($"working", $"sex", $"age")
   }
 
   /**
@@ -212,7 +220,7 @@ object TimeUsage {
     * @param viewName Name of the SQL view to use
     */
   def timeUsageGroupedSqlQuery(viewName: String): String =
-    ???
+    s"SELECT working, sex, age, ROUND(AVG(primaryNeeds),1) as primaryNeeds, ROUND(AVG(work),1) as work,  ROUND(AVG(other),1) as other FROM $viewName GROUP BY working, sex, age ORDER BY working, sex, age"
 
   /**
     * @return A `Dataset[TimeUsageRow]` from the “untyped” `DataFrame`
@@ -222,7 +230,7 @@ object TimeUsage {
     *                           cast them at the same time.
     */
   def timeUsageSummaryTyped(timeUsageSummaryDf: DataFrame): Dataset[TimeUsageRow] =
-    ???
+    timeUsageSummaryDf.as[TimeUsageRow]
 
   /**
     * @return Same as `timeUsageGrouped`, but using the typed API when possible
@@ -236,7 +244,15 @@ object TimeUsage {
     *               Hint: you should use the `groupByKey` and `typed.avg` methods.
     */
   def timeUsageGroupedTyped(summed: Dataset[TimeUsageRow]): Dataset[TimeUsageRow] = {
-    ???
+    summed
+      .groupByKey(row => (row.working, row.sex, row.age))
+      .agg(
+        round(typed.avg[TimeUsageRow](_.primaryNeeds), 1).as[Double].name("primaryNeeds"),
+        round(typed.avg[TimeUsageRow](_.work), 1).as[Double].name("work"),
+        round(typed.avg[TimeUsageRow](_.other), 1).as[Double].name("other")
+      )
+      .map(avgRow => TimeUsageRow(avgRow._1._1, avgRow._1._2, avgRow._1._3, avgRow._2, avgRow._3, avgRow._4))
+      .orderBy($"working", $"sex", $"age")
   }
 }
 
